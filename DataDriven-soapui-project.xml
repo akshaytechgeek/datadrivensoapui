@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<con:soapui-project id="cc5481ac-6f9f-409d-85f4-c36ee27a6457" activeEnvironment="Default" name="DataDriven" resourceRoot="" soapui-version="5.2.0" xmlns:con="http://eviware.com/soapui/config"><con:settings/><con:interface xsi:type="con:RestService" id="0b6ddf96-ec86-499e-b7fa-256d45170372" wadlVersion="http://wadl.dev.java.net/2009/02" name="http://localhost:8745" type="rest" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><con:settings/><con:definitionCache/><con:endpoints><con:endpoint>http://localhost:8745</con:endpoint></con:endpoints><con:resource name="Details" path="/country/details" id="7712fe75-1d97-4041-83ae-70f3c206059d"><con:settings/><con:parameters><con:parameter><con:name>country</con:name><con:value>Thailand</con:value><con:style>QUERY</con:style><con:default>Thailand</con:default><con:path xsi:nil="true"/><con:description xsi:nil="true"/></con:parameter></con:parameters><con:method name="Details" id="954fb974-810e-43d8-aedc-b62d221ff24d" method="GET"><con:settings/><con:parameters/><con:representation type="RESPONSE"><con:mediaType>application/json</con:mediaType><con:status>200</con:status><con:params/></con:representation><con:request name="Request 1" id="544c0d75-287d-4787-88f2-4a9c815846e5" mediaType="application/json"><con:settings><con:setting id="com.eviware.soapui.impl.wsdl.WsdlRequest@request-headers">&lt;xml-fragment/></con:setting></con:settings><con:endpoint>http://localhost:8745</con:endpoint><con:request/><con:originalUri>http://localhost/country/details</con:originalUri><con:credentials><con:authType>No Authorization</con:authType></con:credentials><con:jmsConfig JMSDeliveryMode="PERSISTENT"/><con:jmsPropertyConfig/><con:parameters/><con:parameterOrder><con:entry>country</con:entry></con:parameterOrder></con:request></con:method></con:resource></con:interface><con:testSuite id="073ea20f-de46-4ebb-9c1f-2a9dadb1a907" name="DataDrivenSuite"><con:settings/><con:runType>SEQUENTIAL</con:runType><con:testCase id="ada66670-456d-4d32-8d49-d333ef9fc4e5" failOnError="true" failTestCaseOnErrors="true" keepSession="false" maxResults="0" name="Verify Country Details" searchProperties="true"><con:settings/><con:testStep type="groovy" name="Country Details" id="826941eb-a04f-4443-bf66-2e89d44ab66f"><con:settings/><con:config><script><![CDATA[import groovy.json.JsonSlurper
+import java.io.*
+import java.text.*
+import java.util.*  
+
+//Reference object of read excel sheet class
+lib = testRunner.testCase.testSuite.project.testSuites["DataDrivenSuite"]
+excelclass = lib.testCases["Verify Country Details"].testSteps["ExcelRead"]
+excelclass.run(testRunner, context) 
+def exceldata = context.dataSet
+
+//calling read excel data column index method
+//give excel file path present in local machine
+exceldata.getExcelDataIndex("F:\\automation\\data_driven\\countryinput.xlsx","Sheet1")
+
+Map<String,String>  dataset  = new HashMap<String,String> ();
+for (int i=1;i<= context.rowCount;i++)
+{
+	// get excel row in hashmap object as key value pair
+	dataset=exceldata.getRowDataMap(i)	
+  	if(dataset.get("isRunnable")) 
+	{
+		//call country service api with input param a country name
+    def 	stepRequest= testRunner.testCase.getTestStepByName("Country_Service")
+      	stepRequest.setPropertyValue("country",dataset.get("country"))	   	
+	   	stepRequest.run(testRunner,testRunner.getRunContext())	
+       
+       // get country details api json response and parse
+	   def jsonResponse = testRunner.testCase.getTestStepByName("Country_Service").getPropertyValue("response")
+	   def  responseObject= new JsonSlurper().parseText(jsonResponse) 
+
+
+//aasert json response values against excel sheet data
+ if( responseObject.details.name.toString()==dataset.get("country") &&
+    responseObject.details.capital.toString()==dataset.get("expCapital") &&
+    responseObject.details.isdcode.toString()==dataset.get("expISDCode") &&
+    responseObject.details.currency.toString()==dataset.get("expCurrency") &&
+    responseObject.details.language.toString()==dataset.get("expLanguage"))
+    {
+    	log.info dataset.get("tcname")+"  is passed"
+    	}
+    	else{
+    		log.info dataset.get("tcname")+"  is failed"
+    		}    
+}}]]></script></con:config></con:testStep><con:testStep type="groovy" name="ExcelRead" id="ebabff86-7f45-4527-b047-d3510eb9261d"><con:settings/><con:config><script>import groovy.sql.Sql
+import groovy.json.JsonSlurper
+import java.io.*
+import java.text.*
+import java.util.*
+import org.apache.poi.*
+import org.apache.poi.hssf.usermodel.HSSFWorkbook;
+import org.apache.poi.ss.usermodel.*
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+
+ class DataSet {
+   def log
+   def context
+   def testRunner
+   def Sql
+   def conn
+   // Class constructor with same case as Class name
+   def DataSet(logIn,contextIn,testRunnerIn,SqlIn)   {
+   	
+      this.log = logIn
+      this.context = contextIn
+      this.testRunner = testRunnerIn
+      this.Sql = SqlIn
+   }
+
+ 
+ def  getExcelDataIndex(def inputFile, String sheetName)
+   {
+Sheet sheet;
+int j=0
+Map&lt;String,Integer> index  = new HashMap&lt;String,Integer>();
+try {
+FileInputStream fis = new FileInputStream(inputFile);
+Workbook workbook = new XSSFWorkbook(fis);
+sheet= workbook.getSheet(sheetName);
+context.setProperty("sheetObject", sheet)
+context.setProperty("rowCount", sheet.getLastRowNum())
+// mapping column index with column name.
+   Row firstRow = sheet.getRow(0);
+      for(Cell cell:firstRow){
+   index.put(cell.getStringCellValue() ,j)
+   j++
+    }
+    context.setProperty("indexObject", index)
+ }
+ catch (Exception e)
+  {
+    log.error "Could not find test data input file ."
+  }
+     } 
+
+   //=====================>>>>>>>>>>>===================>>>>>>>>>>>>>>
+
+ def Map getRowDataMap(int rownum)
+   {    	   
+    	   int cellTypeId
+   	    def sheet=context.sheetObject
+   	    def index=context.indexObject
+   	    int rowNum= sheet.getLastRowNum()
+   	     Map dataset  = new HashMap();
+   	     Row rowData=sheet.getRow(rownum)   	      	
+   	      
+   		for (String key : index.keySet()) {
+   		int columnnum=index.get(key)
+		cellTypeId=rowData.getCell(columnnum).getCellType()
+		
+		if (cellTypeId==0){
+			DecimalFormat df = new DecimalFormat("#") 
+			dataset.put (key,df.format(rowData.getCell(columnnum).getNumericCellValue()) )
+			}
+		else if (cellTypeId==1){dataset.put(key,rowData.getCell(columnnum).toString())}
+		else if (cellTypeId==4){dataset.put(key,rowData.getCell(columnnum).getBooleanCellValue())}		
+		}
+
+			return dataset;
+   }
+
+ }
+ 
+context.setProperty( "dataSet", new DataSet( log, context, testRunner, Sql ) )</script></con:config></con:testStep><con:testStep type="restrequest" name="Country_Service" id="1ccbf81e-3262-4458-b4d6-a6d566e92e71" disabled="true"><con:settings/><con:config service="http://localhost:8745" resourcePath="/country/details" methodName="Details" xsi:type="con:RestRequestStep" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><con:restRequest name="Country_Service" id="544c0d75-287d-4787-88f2-4a9c815846e5" mediaType="application/json"><con:settings><con:setting id="com.eviware.soapui.impl.wsdl.WsdlRequest@request-headers">&lt;xml-fragment/></con:setting></con:settings><con:endpoint>http://localhost:8745</con:endpoint><con:request/><con:originalUri>http://localhost/country/details</con:originalUri><con:credentials><con:authType>No Authorization</con:authType></con:credentials><con:jmsConfig JMSDeliveryMode="PERSISTENT"/><con:jmsPropertyConfig/><con:parameters/><con:parameterOrder><con:entry>country</con:entry></con:parameterOrder></con:restRequest></con:config></con:testStep><con:properties/></con:testCase><con:properties/></con:testSuite><con:restMockService id="6ff5ccd5-707b-4ae4-afb0-921a4b3acf00" port="8745" path="/" host="IND-PUN-LAP-003" name="CountryDetails" docroot=""><con:settings/><con:properties/><con:onRequestScript>import groovy.sql.Sql
+
+try{
+           log.info "Establishing the new SQL connection"
+            def  connection = Sql.newInstance("jdbc:mysql://localhost:3306/country","root","","com.mysql.jdbc.Driver")
+            context.setProperty("dbConn", connection)
+  	                    }
+  	catch (Exception ex)
+  	{
+  		log.error "sql connection can not be established"
+  		}
+ 
+
+ 	
+ 
+ </con:onRequestScript><con:restMockAction name="/country/details" method="GET" resourcePath="/country/details" id="23c369b7-411b-49cb-aece-0a7fc48a763f"><con:settings/><con:defaultResponse>Response</con:defaultResponse><con:dispatchStyle>SCRIPT</con:dispatchStyle><con:dispatchPath>import groovy.sql.Sql
+
+Map queryParamMap  = new HashMap();
+
+//Get request URL parameters
+def queryString = mockRequest.getHttpRequest().getQueryString()
+
+//Tokenize the request URL parameters
+def params=queryString.split("&amp;")
+for(i=0;i&lt;params.size();i++)
+{
+	def paramset=params[i].split("=")	
+	queryParamMap.put(paramset[0],paramset[1])
+}
+
+//get country name  from request URI params
+def countryname=queryParamMap.get("country")
+
+//name is set to property context
+context.setProperty("name",'"'+countryname+'"')
+
+//get DB conneciton  object
+def sql=context.dbConn
+  query="select isd_code,capital,currency,language_name from country.country_details where country_name='"+countryname+"'"
+      sql.eachRow(query)
+     {   		row ->       
+               context.setProperty("code",'"'+(row[0])+'"')
+   		  	context.setProperty("capital",'"'+(row[1])+'"') 
+   		  	context.setProperty("currency",'"'+(row[2])+'"') 
+   		  	context.setProperty("language",'"'+(row[3])+'"')   	
+   		  					   		
+  }
+    
+
+    return "Response"</con:dispatchPath><con:response name="Response" id="422e5cbc-2bd9-4913-8c19-7e15e9584acf" httpResponseStatus="200" mediaType="application/json"><con:settings/><con:responseContent>{
+  "details": {
+    "name":${#name},
+    "capital":${#capital},
+    "isdcode":${#code},
+    "currency":${#currency},
+    "language":${#language}
+  }
+}</con:responseContent></con:response></con:restMockAction></con:restMockService><con:properties><con:property><con:name>name</con:name><con:value/></con:property><con:property><con:name>code</con:name><con:value/></con:property><con:property><con:name>capital</con:name><con:value/></con:property><con:property><con:name>language</con:name><con:value/></con:property><con:property><con:name>currency</con:name><con:value/></con:property></con:properties><con:wssContainer/><con:oAuth2ProfileContainer/><con:sensitiveInformation/></con:soapui-project>
